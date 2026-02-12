@@ -1,4 +1,14 @@
-all:
-	@echo "Python project -- nothing to compile"
+a.out: requirements
+	echo '#!/bin/sh' > $@
+	echo 'python3 main.py' >> $@
+	echo 'exit $$?' >> $@
+	chmod +x $@
+.PHONY: a.out
+
+requirements:
+	if -e ./requirements.txt ; then pip install -r ./requirements.txt ; fi
+.PHONY: requirements
+
 clean:
-	rm -f *.pyc __pycache__ -rf
+	rm -f a.out
+.PHONY: clean
