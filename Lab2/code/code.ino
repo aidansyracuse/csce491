@@ -1,4 +1,3 @@
-// CSCE491: Systems Engineering
 // Bit-Banged I2C Lab - MPU-6050 Accelerometer / Tilt Angle
 // Due: Friday, Feb. 20, 2026
 
