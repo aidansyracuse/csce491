@@ -1,0 +1,318 @@
+PAGES: 16
+
+===== PAGE 1 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+Introduction
+In this lab, you will write and test code on the ESP/three.pnum/two.pnum that modulates an audio signal using pulse width
+modulation (PWM), allowing the ESP/three.pnum/two.pnum to output directly to a speaker. Additionally, you will use the
+/one.pnum/zero.pnum/zero.pnum individually addressable WS/two.pnum/eight.pnum/one.pnum/two.pnum RGB LEDs to display a visualization of the audio signal.
+This lab requires low-level programming of both the LEDC and RMT peripherals on the ESP/three.pnum/two.pnum. The
+RMT peripheral generates a signal consisting of bits that are each represented as a time duration spent
+at logic-/one.pnum followed by a time duration spent at logic-/zero.pnum. TheLEDC peripheral generates a PWM signal
+that is preconfigured with a specific frequency.
+WS/two.pnum/eight.pnum/one.pnum/two.pnum Addressing
+The WS/two.pnum/eight.pnum/one.pnum/two.pnum is a single device that includes red, green, and blue LEDs and an integrated controller that
+accepts a serial data stream for setting the brightness of the individual LED colors. Upon receiving the
+first /two.pnum/four.pnum-bit RGB value on power-up or a/f_ter a reset signal is received, the WS/two.pnum/eight.pnum/one.pnum/two.pnum configures its LEDs
+with the corresponding /two.pnum/four.pnum-bit color. A/f_terward, subsequently-received /two.pnum/four.pnum-bit values are forwarded on
+to the next WS/two.pnum/eight.pnum/one.pnum/two.pnum in series. This allows a single master to individually control all the WS/two.pnum/eight.pnum/one.pnum/two.pnums that are
+connected in a string.
+The WS/two.pnum/eight.pnum/one.pnum/two.pnum protocol is asynchronous and consists only of a single “data in” signal called DIN and “data
+out” signal called DOUT . On power-on, the LEDs are oﬀ. At this point the WS/two.pnum/eight.pnum/one.pnum/two.pnum is in an “accept” state,
+in which it monitors its DIN port for a /two.pnum/four.pnum-bit value with which to set the three LED intensities (red, green,
+and blue). Each bit is conveyed to the WS/two.pnum/eight.pnum/one.pnum/two.pnum as a high (level-/one.pnum) period followed by a low (level-/zero.pnum)
+period. These periods are set depending on if the transmitted bit is a /one.pnum or a /zero.pnum.
+Sending a /one.pnum-bit requires a high period, orT/one.pnumH, of /eight.pnum/zero.pnum/zero.pnum ns and a low period, orT/one.pnumLof /four.pnum/five.pnum/zero.pnum ns, while a
+/zero.pnum-bit requires a high period, orT/zero.pnumH, of /four.pnum/zero.pnum/zero.pnum ns and a low period, orT/zero.pnumL, of /eight.pnum/five.pnum/zero.pnum ns. This is shown in the
+figure below.
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /one.pnum
+
+===== PAGE 2 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+(Source: https://cpldcpu.files.wordpress.com//two.pnum/zero.pnum/one.pnum/four.pnum//zero.pnum/one.pnum/ws/two.pnum/eight.pnum/one.pnum/two.pnum_protocol.png)
+From the perspective of an individual LED, when in the “accept state” , the DOUT port is driven to a
+constant logic-/zero.pnum. A/f_ter /two.pnum/four.pnum bits are received, the WS/two.pnum/eight.pnum/one.pnum/two.pnum transitions into the “pass-through state” , where
+incoming bits are ignored for the purpose of setting the LED intensities and are instead forwarded to
+the DOUT port, allowing a downstream WS/two.pnum/eight.pnum/one.pnum/two.pnum to use the bits to set its LED intensities.
+If no bits arrive on DIN for at least /five.pnum/zero.pnum,/zero.pnum/zero.pnum/zero.pnum ns, the WS/two.pnum/eight.pnum/one.pnum/two.pnum transitions back into “accept” state, allowing
+its LED intensities to be set again. In other words, not driving DIN for /five.pnum/zero.pnum microseconds resets the
+controller but does not turn oﬀ the LEDs, which will remain at their previous setting.
+This means that, for playing a video using these LEDs, a controller must budget enough time to configure
+all the LEDs in the frame and have enough time le/f_t over to include the /five.pnum/zero.pnum us idle period to reset for the
+next frame. Thus, for a desired reconfiguration rate of, for example /three.pnum/zero.pnum times per second (/three.pnum/zero.pnum fps), there
+can be no more than (/one.pnum//three.pnum/zero.pnum - /five.pnum/zero.pnumus) / (/eight.pnum/five.pnum/zero.pnum ns + /four.pnum/zero.pnum/zero.pnum ns) = /two.pnum/six.pnum/six.pnum/two.pnum/seven.pnum LEDs, forming, for example, a /three.pnum/zero.pnum fps /one.pnum/six.pnum:/nine.pnum
+display having resolution:
+/one.pnumsqrt(26627 * 16/9) x sqrt(26627 * 9/16) = 217 x 122 pixels
+Note that this limitation could be overcome by using multiple ESP/three.pnum/two.pnum controlling a single display, or
+potentially from a single ESP/three.pnum/two.pnum using more than one RMT channel, though there may be other limiting
+factors (see below).
+ESP/three.pnum/two.pnum Remote Control Transceiver (RMT)
+The ESP/three.pnum/two.pnum RMT (Remote control) peripheral is designed for transmitting/receiving digitally-modulated
+messages for communicating with IR remote controls. In this lab we will only use its transmitting
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /two.pnum
+
+===== PAGE 3 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+ability.
+The RMT has eight channels. Each channel can be clocked by the /eight.pnum/zero.pnumMHz APB_CLK, a /four.pnum/zero.pnumMHz XTAL_CLK,
+or a /one.pnum/seven.pnum./five.pnumMHz RC_FAST_CLK. Whichever reference clock is selected is subjected to a clock divider.
+The divided clock increments a counter whose output is used to determine whether the channel
+output is driven to logic-/one.pnum or logic-/zero.pnum. The number of clock cycles corresponding to each logic level are
+programmed into a memory called the RMT RAM.
+Initializing the RMT
+Initializing the RMT requires setting up four registers.
+Two of these, SYSTEM_PERIP_CLK_ENO_REG and SYSTEM_PERIP_RST_ENO_REG, are global regis-
+ters that allow the RMT peripheral to be enabled and taken out of reset.
+The other two registers, RMT_SYS_CONF_REG and RMT_CH/zero.pnum_CONF/zero.pnum_REG, are used to configure
+RMT-specific settings.
+(/one.pnum) InSYSTEM_PERIP_CLK_EN/zero.pnum_REG:
+Figure /one.pnum:SYSTEM_PERIP_CLK_EN/zero.pnum_REG
+Turn on the RMT; set SYSTEM_RMT_CLK_EN bit (bit /nine.pnum) to /one.pnum.
+(/two.pnum) In inSYSTEM_PERIP_RST_EN/zero.pnum_REG:
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /three.pnum
+
+===== PAGE 4 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+Figure /two.pnum:SYSTEM_PERIP_RST_EN/zero.pnum_REG
+Pull RMT out of reset; set SYSTEM_RMT_RST (bit /nine.pnum) to /zero.pnum (may want to set to /one.pnum, then to /zero.pnum to ensure
+reset).
+(/three.pnum) In theRMT_SYS_CONF_REG register:
+Figure /three.pnum:RMT_SYS_CONF_REG
+Set RMT_APB_FIFO_MASK to /zero.pnum.
+Set RMT_CLK_EN (bit /three.pnum/one.pnum) to /one.pnum.
+Set RMT_MEM_CLK_FORCE_ON (bit /one.pnum) to /one.pnum.
+Set RMT_SCLK_DIV_NUM to /zero.pnum (sets clock divider to /one.pnum; NUM+/one.pnum).
+(/four.pnum) In theRMT_CH/zero.pnum_CONF/zero.pnum_REG register:
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /four.pnum
+
+===== PAGE 5 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+Figure /four.pnum:RMT_CHn_CONF/zero.pnum_REG_S/three.pnum
+Set RMT_CARRIER_EN_CH/zero.pnum to /zero.pnum to disable RMT carrier frequency.
+Set RMT_DIV_CNT_CH/zero.pnum to /one.pnum.
+Set RMT_IDLE_OUT_EN_CH/zero.pnum to /one.pnum to drive the output to logic-/zero.pnum when the RMT is not transmitting (this
+enables the WS/two.pnum/eight.pnum/one.pnum/two.pnum reset functionality).
+Set the RMT_IDLE_OUT_LV_CH/zero.pnum to /zero.pnum to set the output to /zero.pnum when the RMT is idle.
+Set RMT_CONF_UPDATE_CH/zero.pnum (bit /two.pnum/four.pnum) to /one.pnum.
+Connecting the RMT and LEDC Peripherals to Output Pins
+In its output mode, the GPIO system is configured in the following manner:
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /five.pnum
+
+===== PAGE 6 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+Figure /five.pnum:GPIO matrix and IOMUX
+The GPIO matrix selects one of the /one.pnum/eight.pnum/four.pnum ESP/three.pnum/two.pnum-S/three.pnum’s internal peripheral signals to route to each of the /four.pnum/five.pnum
+user-programmable GPIO pins. Thus, there are /four.pnum/five.pnumGPIO_FUNCn_OUT_SEL_CFG_REG registers (where n
+is /zero.pnum to /four.pnum/four.pnum), each corresponding to a GPIO pin and each containing a field calledGPIO_FUNC_OUT_SEL
+for selecting the pin’s function.
+Setting GPIO_FUNC_OUT_SEL to /two.pnum/five.pnum/six.pnum allows the pin to be controlled via so/f_tware, allowing for “bit
+banged” functionality, while setting it to /eight.pnum/one.pnum selects the RMT peripheral and setting it to /seven.pnum/three.pnum selects the
+LEDC peripheral.
+Likewise, the GPIO_FUNCn_OUT_SEL_CFG_REG register for each of the /four.pnum/five.pnum pins has its own address,
+shown below for this lab.
+pin register function for this lab GPIO_FUNC_OUT_SEL
+/one.pnum/four.pnumGPIO_FUNC/one.pnum/four.pnum_OUT_SEL_CFG_REGLEDC /seven.pnum/three.pnum
+/three.pnum/three.pnum GPIO_FUNC/three.pnum/three.pnum_OUT_SEL_CFG_REG RMT /eight.pnum/one.pnum
+• GPIO_FUNCx_OEN_INV_SEL controls if the output is inverted (set to /zero.pnum)
+• GPIO_FUNCx_OEN_SEL determines if the output enable is controlled by a separate output enable
+register or by the peripheral (set to /zero.pnum)
+• GPIO_FUNCx_OUT_SEL determines which peripheral (function) to connect to our pin
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /six.pnum
+
+===== PAGE 7 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+pin register MCU_SEL
+/one.pnum/four.pnumIO_MUX_GPIO/one.pnum/four.pnum_REG/two.pnum
+/three.pnum/three.pnum IO_MUX_GPIO/three.pnum/three.pnum_REG /two.pnum
+Figure /six.pnum:GPIO_FUNCn_OUT_SEL_CFG_REG
+The GPIO matrix must pass additionally through each pin’s IOMUX before finally hitting the pin. The
+IOMUX allows for the attachment of pull-up/pull-down resistors and allow higher-speed signals to
+bypass the GPIO matrix to avoid the GPIO matrix performance overhead. However, you do not need to
+change any of its control signals.
+Programming the RMT Output Data
+RMT RAM is divided into eight blocks of /four.pnum/eight.pnum words each, one block per channel. Each word holds
+transmission data in the following format:
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /seven.pnum
+
+===== PAGE 8 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+Figure /seven.pnum:RMT RAM
+The level is either /zero.pnum or /one.pnum, and the period is given in clock cycles. For example, an entry containing the
+values “/zero.pnum, /five.pnum, /one.pnum, /one.pnum/zero.pnum” should cause the output to go low for /five.pnum cycles and then high for /one.pnum/zero.pnum cycles. The RMT
+will stop reading data when it encounters a word where one of the periods is /zero.pnum.
+Steps for Transmitting on RMT
+The RMT RAM contains enough entries for /three.pnum/eight.pnum/four.pnum pulses, although we recommend using the so/f_tware to
+update the RMT RAM a/f_ter every /two.pnum/four.pnum bits are transmitted (e.g. a/f_ter configuring each LED). This way, the
+so/f_tware will write /two.pnum/four.pnum entries plus a zero termination into the RMT RAM, trigger the RMT to transmit,
+perform other tasks during the /three.pnum/zero.pnum us required for the transmission, and then repeat to setup the next
+LED. A/f_ter all LEDs are set up, the so/f_tware will pause for at least /five.pnum/zero.pnum us to cause all LEDs to re-enter the
+“accept” state.
+To perform a transmission:
+(/one.pnum) write /two.pnum/four.pnum entries in the RMT RAM,
+(/two.pnum) write zero termination in the /two.pnum/five.pnumth entry in the RMT RAM,
+(/three.pnum) set CONF_UPDATE (bit /two.pnum/four.pnum) to /one.pnum in the RMT_CH/zero.pnum_CONF/zero.pnum_REG register,
+(/four.pnum) set RMT_TX_START_CH/zero.pnum (bit /zero.pnum) to /one.pnum in the RMT_CH/zero.pnum_CONF/zero.pnum_REG register.
+To wait for completion:
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /eight.pnum
+
+===== PAGE 9 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+(/one.pnum) read the RMT_INT_RAW_REG register, check if the RMT_CH/zero.pnum_TX_END_INT_RAW bit is set
+(/two.pnum)if yes, set the RMT_TX_END_INT bit in the RMT_INT_CLR_REG register (suggest you also do this
+when initializing the RMT)
+Figure /eight.pnum:RMT_INT_RAW_REG
+Figure /nine.pnum:RMT_INT_CLR_REG
+Summary of RMT Registers
+register address purpose
+SYSTEM_PERIP_CLK_EN/zero.pnum_REG/zero.pnumx/six.pnum/zero.pnum/zero.pnumC/zero.pnum/zero.pnum/one.pnum/eight.pnumturns on RMT
+SYSTEM_PERIP_RST_EN/zero.pnum_REG /zero.pnumx/six.pnum/zero.pnum/zero.pnumC/zero.pnum/zero.pnum/two.pnum/zero.pnum disable reset of RMT
+RMT_SYS_CONF_REG /zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/six.pnum/zero.pnumC/zero.pnumenable RMT RAM
+RMT_CH/zero.pnum_CONF/zero.pnum_REG /zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/six.pnum/zero.pnum/two.pnum/zero.pnum set clock divider, disable carrier
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /nine.pnum
+
+===== PAGE 10 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+register address purpose
+RMT_INT_RAW_REG /zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/six.pnum/zero.pnum/seven.pnum/zero.pnumcheck if RMT is finished transmitting
+RMT_INT_CLR_REG /zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/six.pnum/zero.pnum/seven.pnumC clear the interrupt indicating completion
+RMT_RAM /zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/six.pnum/eight.pnum/zero.pnum/zero.pnumarray of /two.pnum/five.pnum values to define output pattern
+Converting an Audio File
+We will provide a Python script that converts a .wav file to a C header file containing a constant array
+called sampleArray containing the first /one.pnum million samples. The file also contains a variable called
+sampleRate set to the sample rate.
+LEDC
+The ESP/three.pnum/two.pnum LEDC (LED PWM Control) peripheral generates PWM (pulse-width modulation) signals that
+can be used for a variety of purposes. As the name implies, it’s intended to be used for driving an LED
+to vary its brightness, but it can be used for anything that needs a PWM signal, including a speaker,
+motor, or power MOSFET .
+As with the RMT , the LEDC can use the /eight.pnum/zero.pnumMHz APB_CLK, a /four.pnum/zero.pnumMHz XTAL_CLK, or a /one.pnum/seven.pnum./five.pnumMHz RC_FAST_CLK.
+You can use /eight.pnum/zero.pnum MHz clock for this lab. This clock is divided by the PWM clock divider, which is a (/one.pnum/eight.pnum, /eight.pnum)
+fixed-point value.
+Then the PWM period is the time required to flip a counter having N bits, where N is defined by the
+duty resolution. For example, the PWM period for the /eight.pnum/zero.pnum MHz clock with a divider of /one.pnum and /eight.pnum-bit duty
+resolution would be (/eight.pnume/seven.pnum//one.pnum)//two.pnum/five.pnum/six.pnum = /three.pnum/one.pnum/two.pnum./five.pnum KHz.
+Initializing LEDC
+(/one.pnum) Turn on LEDC: set bit /one.pnum/one.pnum in SYSTEM_PERIP_CLK_EN/zero.pnum_REG
+(/two.pnum) Take LEDC out of reset: clear bit /one.pnum/one.pnum in SYSTEM_PERIP_RST_EN/zero.pnum_REG (or set and clear to ensure
+reset)
+In LEDC_CONF_REG:
+LEDC_CONF_REG
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /one.pnum/zero.pnum
+
+===== PAGE 11 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+Set bit /three.pnum/one.pnum to /one.pnum to enable the clock to the LEDC’s registers
+Set bit /zero.pnum to /one.pnum to select the APB clock.
+In LEDC_TIMER/zero.pnum_CONF_REG:
+Figure /one.pnum/zero.pnum:LEDC_TIMERx_CONF_REG
+First, compute the clock divider value. Our reference clock is /eight.pnum/zero.pnum MHz, and we need to divide the clock to
+make it match our audio sample rate, which we will denote asR. The divider is set as a whole part and
+a fractional part. The whole part is computed as floor(/eight.pnum/zero.pnume/six.pnum / R). The fractional part can be computed
+as the nearest multiple of /one.pnum//two.pnum/five.pnum/six.pnum, so you can compute it as (/eight.pnum/zero.pnume/six.pnum/R - floor(/eight.pnum/zero.pnume/six.pnum/R))*/two.pnum/five.pnum/six.pnum. Once you have
+this:
+(/one.pnum) Set LEDC_DUTY_RES to /eight.pnum (as given by the sample size in your audio file).
+(/two.pnum) Set LEDC_TIMER/zero.pnum_RST to /zero.pnum (bit /two.pnum/three.pnum).
+(/three.pnum) Set LEDC_CLK_DIV_TIMERx to (/one.pnum/zero.pnum./eight.pnum bit divider value calculated above)
+(/four.pnum) Set LEDC_TIMER/zero.pnum_PARA_UP (bit /two.pnum/five.pnum) to commit changes.
+In the LEDC_CH/zero.pnum_CONF/zero.pnum_REG:
+Figure /one.pnum/one.pnum:LED_CHn_CONF/zero.pnum_REG
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /one.pnum/one.pnum
+
+===== PAGE 12 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+(/one.pnum) Set bit /two.pnum to enable LEDC.
+(/two.pnum) Set LEDC_TIMER_SEL_CH/zero.pnum to /zero.pnum (selects timer).
+(/three.pnum) Set LEDC_PARA_UP_CH/zero.pnum (bit /four.pnum) to /one.pnum.
+Sending Data through the LEDC PWM
+In LEDC_INT_RAW_REG and LEDC_INT_CLR_REG:
+Figure /one.pnum/two.pnum:LEDC_INT_RAW_REG
+Figure /one.pnum/three.pnum:LEDC_INT_CLR_REG
+The LEDC_TIMER/zero.pnum_OVF_INT_RAW bit in the LEDC_INT_RAW_REG indicates that the counter associated
+with the LEDC channel overflowed and that one period of the PWM signal just completed.
+When this bit is set, clear it by writing the LEDC_TIMER/zero.pnum_OVF_INT_CLR.
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /one.pnum/two.pnum
+
+===== PAGE 13 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+In the LEDC_CH/zero.pnum_DUTY_REG:
+Figure /one.pnum/four.pnum:LEDC_CHn_DUTY_REG
+Write the duty cycle into the whole bits of the LEDC_CHn_DUTY_REG. Be sure to shi/f_t the whole bits
+by /four.pnum bits to the le/f_t to set its fraction bits to /zero.pnum.
+In the LEDC_CH/zero.pnum_CONF/zero.pnum_REG (shown above), set the LEDC_PARA_UP_CH/zero.pnum bit.
+In LEDC_CH/zero.pnum_CONF/one.pnum_REG:
+Figure /one.pnum/five.pnum:LEDC_CHn_CONF/one.pnum_REG
+In the LEDC_CH/zero.pnum_CONF/one.pnum_REG, set the LEDC_DUTY_START_CH/zero.pnum bit.
+Summary of LEDC registers
+register address purpose
+LEDC_TIMER/zero.pnum_CONF_REG/zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/nine.pnum/zero.pnumA/zero.pnumset reference clock, divider,
+and duty cycle width
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /one.pnum/three.pnum
+
+===== PAGE 14 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+register address purpose
+LEDC_CONF_REG /zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/nine.pnum/zero.pnumD/zero.pnum Enables and selects LEDC
+clock
+LEDC_CH/zero.pnum_CONF/zero.pnum_REG/zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/nine.pnum/zero.pnum/zero.pnum/zero.pnumidle value, enable, select timer
+LEDC_CH/zero.pnum_CONF/one.pnum_REG /zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/nine.pnum/zero.pnum/zero.pnumC commits configuration
+changes
+LEDC_CH/zero.pnum_DUTY_REG/zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/nine.pnum/zero.pnum/zero.pnum/eight.pnumduty cycle
+LEDC_INT_RAW_REG /zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/nine.pnum/zero.pnumC/zero.pnum interrupt status
+LEDC_INT_CLR_REG /zero.pnumx/six.pnum/zero.pnum/zero.pnum/one.pnum/nine.pnum/zero.pnumCCclear interrupt
+Writing Registers
+To write to registers, useREG_WRITE(REG_ADDRESS, DATA);
+To read from registers, useREG_READ(REG_ADDRESS);
+To set a single bit in a register, doREG_SET_BIT(REG_ADDRESS, BITMASK);
+To clear a single bit, do REG_CLR_BIT(REG_ADDRESS, BITMASK);
+Audio Visualization
+There are /one.pnum/zero.pnum/zero.pnum LEDs on the board, connected in row-major order (i.e. the upper-le/f_t corner is LED /zero.pnum, the
+lower-right corner is LED /nine.pnum/nine.pnum). For this lab, we will visualize the audio on the LEDs by lighting up the
+LEDs in order from /zero.pnum to /nine.pnum/nine.pnum according to the audio magnitude and also setting their color to indicate the
+magnitude.
+Audio visualization is generally performed using a log-scale plot, .i.e. the magnitude is shown as
+log(duty cycle//two.pnum/five.pnum/six.pnum), which for duty cycles /one.pnum to /two.pnum/five.pnum/five.pnum gives a range of -/five.pnum./five.pnum to /zero.pnum. Each of the /one.pnum/zero.pnum/zero.pnum LEDs can
+represent a range of /one.pnum./one.pnum starting at -/five.pnum./five.pnum.
+To make the visualization more dynamic, set the colors of all the LEDs according to the amplitude. You
+can use your own approach for this or use the colormap below:
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /one.pnum/four.pnum
+
+===== PAGE 15 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+Number of LEDS on R G B
+/one.pnum /two.pnum/five.pnum/five.pnum/zero.pnum/zero.pnum
+/two.pnum /two.pnum/five.pnum/five.pnum /two.pnum/five.pnum/five.pnum /zero.pnum
+/three.pnum /two.pnum/five.pnum/five.pnum/two.pnum/five.pnum/five.pnum/eight.pnum/five.pnum
+/four.pnum /two.pnum/five.pnum/five.pnum /two.pnum/five.pnum/five.pnum /one.pnum/seven.pnum/one.pnum
+/five.pnum /two.pnum/five.pnum/five.pnum/two.pnum/five.pnum/five.pnum/two.pnum/five.pnum/five.pnum
+Requirements
+This is a complex lab, so to help in grading and assisting lab groups, we will require that your code
+follow a few requirements:
+(/one.pnum) All register addresses must be named using#define, e.g.
+/one.pnum/grave.ts1#define LEDC_TIMER0_CONF_REG 0x600190A0 /grave.ts1
+(/two.pnum) Write a functionvoid setup_RMT() that initializes the RMT .
+(/three.pnum) Write a functionvoid setup_LEDC() that initializes the LEDC.
+(/four.pnum)Write a function void update_PWM (uint32_t initial,uint32_t sample) that up-
+dates the PWM output. The parameter initial is a flag that specifies if this is the first time
+the PWM is being output, and sample is the sample (duty cycle value) to output. The function
+should check the LEDC_INT_RAW_REG to determine if it is time to update the PWM value. If not,
+the function should return without writing to any peripherals unless the initial flag is set.
+(/five.pnum)Write a function namedvoid transmit_led_signal(uint32_t *colors) that will update
+all five LEDs to colors as given by the array colors.
+Important Note
+You must supply /one.pnum/two.pnum VDC power to your board to the VBATT input for the audio circuit (the LEDs are
+powered from USB-C).
+Please set your /one.pnum/two.pnum VDC power supply current limit to /one.pnum/zero.pnum/zero.pnum mA to avoid damaging the speaker.
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /one.pnum/five.pnum
+
+===== PAGE 16 =====
+PWM Audio/Addressable LEDs Due: Friday, Apr. /one.pnum/zero.pnum, /two.pnum/zero.pnum/two.pnum/six.pnum CSCE/four.pnum/nine.pnum/one.pnum: Systems Engineering
+Submitting Your Code
+Submit your code using Blackboard.
+Rubric
+• /one.pnum/zero.pnum points: Meet code requirements
+• /one.pnum/zero.pnum points: Demonstrate ability to light LEDs
+• /one.pnum/zero.pnum points: Demonstrate ability to send PWM signals using LEDC
+• /one.pnum/zero.pnum points: Audio demonstration
+• /one.pnum/zero.pnum points: Visualization demonstration
+• /five.pnum/zero.pnum points: Overall demonstration and explanation of code
+Copyright /two.pnum/zero.pnum/two.pnum/six.pnum Jason D. Bakos and Alex Anderson-McLeod /one.pnum/six.pnum

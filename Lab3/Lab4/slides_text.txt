@@ -1,0 +1,191 @@
+PAGES: 18
+
+===== PAGE 1 =====
+
+Lab 4: PWM Audio and Addressable LEDs
+• In this lab you will write low-level drivers for two peripherals:
+• The ESP32 RMT (Remote Control Transceiver)
+• Generates a waveform intended for infrared remote control signals
+• These generally use Manchester code:
+• The ESP32 LEDC (LED Controller)
+• Intended for LEDs
+• Generates a PWM signal:
+0 0.1 0.2 0.3 0.4 0.5 0.6 0.7 0.8 0.9 1
+10
+-3
+0
+0.2
+0.4
+0.6
+0.8
+1
+
+
+===== PAGE 2 =====
+
+WS2812 Array Schematic
+pin 
+33
+
+
+===== PAGE 3 =====
+
+Audio Circuit Schematic
+pin 14
+
+
+===== PAGE 4 =====
+
+WS2812 LEDs
+• Individually-addressed LED
+• Asynchronous, one-input DIN, one-output DOUT
+T0H 400 ns
+T0L 850 ns
+T1H 800 ns
+T1L 450 ns
+reset 50 us
+
+
+===== PAGE 5 =====
+
+Initializing RMT
+
+
+
+===== PAGE 6 =====
+
+Initializing RMT
+Set to 0 for 80 MHz clock
+1/80MHz = 12.5 ns
+850 ns / 12.5 ns = 68
+
+
+===== PAGE 7 =====
+
+Initializing RMT
+
+
+
+===== PAGE 8 =====
+
+RMT RAM
+• RMT RAM holds a waveform as:
+• A sequence of entries
+• Each entry contains a four values
+• Zero terminated
+• To initiate:
+• Write 24 entries + zero termination
+• Set then clear the RMT_MEM_RD_RST bit
+• Set RMT_TX_START
+• Wait for RMT_CH0_TX_END_INT_RAW to become set
+• Set the RMT_CH0_TX_END_INT_CLR bit
+
+
+
+===== PAGE 9 =====
+
+Using RMT
+
+
+
+===== PAGE 10 =====
+
+Using RMT
+
+
+
+===== PAGE 11 =====
+
+GPIO
+• ESP32 has:
+• 56 pins
+• Of these, 45 are user-configurable (“GPIO pins”)
+• ESP32 has a 184 x 49 “GPIO matrix” that allows:
+• Any of the ESP32’s 49 GPIO_in to drive any of 
+drivable internal signals
+• Any of internal signals to drive any of the 
+ESP32’s 49 GPIO_out pins
+• Each pin is controlled by 2 IO muxes (one for 
+input and one for output)
+control 
+reg
+control 
+reg
+control 
+reg
+control 
+reg
+control 
+reg
+
+
+===== PAGE 12 =====
+
+Bit Twiddling
+CSCE 491 12
+GPIO_FUNCx_OUT_SEL_CFG_REG
+IO_MUX_GPIOn_REG
+• There is one GPIO_FUNCn_OUT_SEL_CFG_REG register for each of the 49 pins
+• There is one GPIO_FUNCn_IN_SEL_CFG_REG register for each of the 49 pins
+• There is one IO_MUX_GPIOn_REG for each of the 49 pins
+
+
+
+===== PAGE 13 =====
+
+Example
+• Goal: connect a “simple” IO output to pin 12
+• Set GPIO_FUNC12_OUT_SEL_CFG_REG.GPIO_FUNC12_OUT_SEL to 256
+• Set IO_MUX_GPIO12_REG.MCU_SEL to 3
+#define GPIO_BASE     0x60004000
+#define IOMUX_BASE    0x60009000
+#define PIN     12
+#define GPIO_FUNC##pin##_OUT_SEL_CFG_REG GPIO_BASE + 0x554 + (pin * 4)
+#define IO_MUX_GPIO##pin##_REG   IOMUX_BASE + (pin * 4)
+#define GPIO_OUT_DATA    GPIO_BASE+4
+REG_CLR_BIT(GPIO_FUNC12_OUT_SEL_CFG_REG,(1<<9) – 1);
+REG_SET_BIT(GPIO_FUNC12_OUT_SEL_CFG_REG,256);
+REG_CLR_BIT(IO_MUX_GPIO12_REG,(1<<3) – 1<<12);
+REG_SET_BIT(IO_MUX_GPIO12_REG,3<<12);
+REG_SET_BIT(GPIO_OUT_DATA,1<<12);
+CSCE 491 13
+
+
+===== PAGE 14 =====
+
+Initializing LEDC
+10 bits . 8 bits
+Set this to match audio sample rate
+
+
+===== PAGE 15 =====
+
+Initializing LEDC
+
+
+
+===== PAGE 16 =====
+
+Initlializing LEDC
+
+
+
+===== PAGE 17 =====
+
+Setting Duty Cycle
+8 bits
+
+
+===== PAGE 18 =====
+
+LEDC
+• To initiate:
+• Set duty cycle (LEDC_CH0_DUTY_REG)
+• Wait until LEDC_HSTIMER0_OVF_INT_RAW is set
+• Clear it by LEDC_HSTIMER0_OVF_INT_CLR
+• To convert WAV file:
+• audioToPCM.py <file.wav>
+• generates array.h with:
+• const uint32_t sampleRate = XXX;
+• const uint8_t sampleArray[] = {XXX, XXX, ..., XXX};
+
