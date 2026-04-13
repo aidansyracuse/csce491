@@ -8,7 +8,7 @@
 // All peripheral setup is done by writing directly to the ESP32-S3
 // hardware registers (no Arduino/IDF driver calls).
 
-#include <Arduino.h>
+
 #include "array.h"   // provides sampleRate and sampleArray[] (from audioToPCM.py)
 
 // ---------- System / clock gating ----------
